@@ -68,8 +68,8 @@ class AdamW(Optimizer):
                 weight_decay = group["weight_decay"]
 
                 if len(state) == 0:
-                    state["m"] = torch.zeros(grad.size())
-                    state["v"] = torch.zeros(grad.size())
+                    state["m"] = torch.zeros(grad.size()).to(grad.device) # get tensor's device
+                    state["v"] = torch.zeros(grad.size()).to(grad.device)
                     state["t"] = 0
                 
                 # Update the first and second moments of the gradients.
