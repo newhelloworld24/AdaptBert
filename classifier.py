@@ -236,6 +236,7 @@ def save_model(model, optimizer, args, config, filepath):
 def train(args):
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
     # Create the data and its corresponding datasets and dataloader.
+    print("device: ", device)
     train_data, num_labels = load_data(args.train, 'train')
     dev_data = load_data(args.dev, 'valid')
 
