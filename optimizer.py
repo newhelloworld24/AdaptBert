@@ -32,6 +32,9 @@ class AdamW(Optimizer):
             loss = closure()
 
         for group in self.param_groups:
+            # Parameter containing:
+            # tensor([[-0.0043,  0.3097, -0.4752],
+            # [-0.4249, -0.2224,  0.1548]], requires_grad=True)
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -55,12 +58,30 @@ class AdamW(Optimizer):
                 # 2. Apply bias correction
                 #    (using the "efficient version" given in https://arxiv.org/abs/1412.6980;
                 #     also given in the pseudo-code in the project description).
-                # 3. Update parameters (p.data).
+                # 3. Update parameters (p.data). # equals to theta
                 # 4. Apply weight decay after the main gradient-based updates.
                 # Refer to the default project handout for more details.
 
                 ### TODO
-                raise NotImplementedError
+                beta1, beta2 = group["betas"]
+                eps = group["eps"]
+                weight_decay = group["weight_decay"]
 
+                if len(state) == 0:
+                    state["m"] = torch.zeros(grad.size())
+                    state["v"] = torch.zeros(grad.size())
+                    state["t"] = 0
+                
+                # Update the first and second moments of the gradients.
+                state["t"] = state["t"] + 1
+                gt = grad
+                state["m"] = beta1 * state["m"] + (1 - beta1) * gt
+                state["v"] = beta2 * state["v"] + (1 - beta2) * gt**2
+
+                # Apply bias correction
+                alpha_t = alpha * math.sqrt(1 - beta2**state["t"])/(1 - beta1**state["t"])
+
+                p.data = p.data - alpha_t * state["m"]/(torch.sqrt(state["v"]) + eps) - \
+                        alpha * weight_decay * p.data # Apply weight decay after the main gradient-based updates
 
         return loss
