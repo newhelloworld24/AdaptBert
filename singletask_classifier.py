@@ -147,7 +147,7 @@ def save_model(model, optimizer, args, config, filepath):
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
 
-def train_sentiment(args, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels):
+def train_sentiment(args, config, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels):
     '''Train MultitaskBERT for sentiment classification.
 
     Currently only trains on SST dataset. The way you incorporate training examples
@@ -195,7 +195,7 @@ def train_sentiment(args, model, device, sst_train_dataloader, sst_dev_dataloade
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_sentiment_accuracy :.3f}, dev acc :: {dev_sentiment_accuracy :.3f}")
     
-def train_paraphrase(args, model, device, para_train_dataloader, para_dev_dataloader):
+def train_paraphrase(args, config, model, device, para_train_dataloader, para_dev_dataloader):
     '''Train MultitaskBERT for paraphrase detection.
     '''
 
@@ -245,7 +245,7 @@ def train_paraphrase(args, model, device, para_train_dataloader, para_dev_datalo
         
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
 
-def train_similarity(args, model, device, sts_train_dataloader, sts_dev_dataloader):
+def train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_dataloader):
     '''Train MultitaskBERT for semantic textual similarity.
     '''
     lr = args.lr
@@ -336,11 +336,11 @@ def train_singletask(args):
     model = model.to(device)
 
     if args.single_task == 'sst':
-        train_sentiment(args, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels)
+        train_sentiment(args, config, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels)
     elif args.single_task == 'para':
-        train_paraphrase(args, model, device, para_train_dataloader, para_dev_dataloader)
+        train_paraphrase(args, config, model, device, para_train_dataloader, para_dev_dataloader)
     elif args.single_task == 'sts':
-        train_similarity(args, model, device, sts_train_dataloader, sts_dev_dataloader)
+        train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_dataloader)
 
 
 def test_singletask(args):
