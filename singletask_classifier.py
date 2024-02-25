@@ -32,7 +32,7 @@ from datasets import (
     load_multitask_data
 )
 
-from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
+from evaluation import model_eval_sst_single_task, model_eval_para_single_task, model_eval_sts_single_task
 
 
 TQDM_DISABLE=False
@@ -81,8 +81,6 @@ class MultitaskBERT(nn.Module):
 
         # Initialize for semantic textual similarity
         self.similarity_project = nn.Linear(config.hidden_size * 2, 1)
-        
-
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -93,7 +91,6 @@ class MultitaskBERT(nn.Module):
         ### TODO
         bert_pooler_output = self.bert(input_ids, attention_mask)['pooler_output']
         return bert_pooler_output
-
 
     def predict_sentiment(self, input_ids, attention_mask):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
@@ -150,7 +147,7 @@ def save_model(model, optimizer, args, config, filepath):
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
 
-def train_sentiment(args, model, device, sst_train_dataloader):
+def train_sentiment(args, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels):
     '''Train MultitaskBERT for sentiment classification.
 
     Currently only trains on SST dataset. The way you incorporate training examples
@@ -187,16 +184,18 @@ def train_sentiment(args, model, device, sst_train_dataloader):
 
         train_loss = train_loss / (num_batches)
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        (train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids) = \
+                    model_eval_sst_single_task(sst_train_dataloader, model, device)
+        (dev_sentiment_accuracy, dev_sst_y_pred, dev_sst_sent_ids) = \
+                    model_eval_sst_single_task(sst_dev_dataloader, model, device)
 
-        if dev_acc > best_dev_acc:
-            best_dev_acc = dev_acc
+        if dev_sentiment_accuracy > best_dev_acc:
+            best_dev_acc = dev_sentiment_accuracy
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_sentiment_accuracy :.3f}, dev acc :: {dev_sentiment_accuracy :.3f}")
     
-def train_paraphrase(args, model, device, para_train_dataloader):
+def train_paraphrase(args, model, device, para_train_dataloader, para_dev_dataloader):
     '''Train MultitaskBERT for paraphrase detection.
     '''
 
@@ -220,11 +219,12 @@ def train_paraphrase(args, model, device, para_train_dataloader):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
+            b_labels = b_labels.to(device)
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = logits.sigmoid()
-            loss = F.binary_cross_entropy(y_hat[0], b_labels.view(-1))
+            y_hat = torch.sigmoid(logits.sigmoid())           
+            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32))
 
             loss.backward()
             optimizer.step()
@@ -234,9 +234,18 @@ def train_paraphrase(args, model, device, para_train_dataloader):
 
         train_loss = train_loss / (num_batches)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
+        (train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids) = \
+                    model_eval_para_single_task(para_train_dataloader, model, device)
+        (dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids) = \
+                    model_eval_para_single_task(para_dev_dataloader, model, device)
+        
+        if dev_paraphrase_accuracy > best_dev_acc:
+            best_dev_acc = dev_paraphrase_accuracy
+            save_model(model, optimizer, args, config, args.filepath)
+        
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
 
-def train_similarity(args, model, device, sts_train_dataloader):
+def train_similarity(args, model, device, sts_train_dataloader, sts_dev_dataloader):
     '''Train MultitaskBERT for semantic textual similarity.
     '''
     lr = args.lr
@@ -259,10 +268,11 @@ def train_similarity(args, model, device, sts_train_dataloader):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
+            b_labels = b_labels.to(device)
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(logits, b_labels.view(-1))
+            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1).to(dtype=torch.float32))
 
             loss.backward()
             optimizer.step()
@@ -272,9 +282,18 @@ def train_similarity(args, model, device, sts_train_dataloader):
         
         train_loss = train_loss / (num_batches)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
+        (train_sts_corr, train_sts_y_pred, train_sts_sent_ids) = \
+                    model_eval_sts_single_task(sts_train_dataloader, model, device)
+        (dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids) = \
+                    model_eval_sts_single_task(sts_dev_dataloader, model, device)
+        
+        if dev_sts_corr > best_dev_acc:
+            best_dev_acc = dev_sts_corr
+            save_model(model, optimizer, args, config, args.filepath)
+        
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_sts_corr :.3f}, dev acc :: {dev_sts_corr :.3f}")
 
-def train_multitask(args):
+def train_singletask(args):
     # Get device
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
     print("device: ", device)
@@ -316,119 +335,15 @@ def train_multitask(args):
     model = MultitaskBERT(config)
     model = model.to(device)
 
-    # train_sentiment(args, model, device, sst_train_dataloader, num_labels)
-    # train_paraphrase(args, model, device, para_train_dataloader)
-    # train_similarity(args, model, device, sts_train_dataloader)
-
-    lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = 0
-
-    # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            b_ids, b_mask, b_labels = (batch['token_ids'],
-                                       batch['attention_mask'], batch['labels'])
-
-            b_ids = b_ids.to(device)
-            b_mask = b_mask.to(device)
-            b_labels = b_labels.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-
-        train_loss = train_loss / (num_batches)
-        print("sst train_loss: ", train_loss)
-        
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
-
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = torch.sigmoid(logits.sigmoid())           
-            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32))
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-        
-        train_loss = train_loss / (num_batches)
-        print("para train_loss: ", train_loss)
-
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
-
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1).to(dtype=torch.float32))
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-        
-        train_loss = train_loss / (num_batches)
-        print("sts train_loss: ", train_loss)
-
-    (train_sentiment_accuracy, sst_y_pred, sst_sent_ids,
-    train_paraphrase_accuracy, para_y_pred, para_sent_ids,
-    train_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sentiment_train_dataloader, \
-                                        paraphrase_train_dataloader, sts_train_dataloader, \
-                                        model, device)
-    print("sst_train: ", train_sentiment_accuracy, " para_train: ", \
-        train_paraphrase_accuracy, " sts_train: ", train_sts_corr)
-    
-    (dev_sentiment_accuracy, sst_y_pred, sst_sent_ids,
-    dev_paraphrase_accuracy, para_y_pred, para_sent_ids,
-    dev_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sentiment_dev_dataloader, \
-                                        paraphrase_dev_dataloader, sts_dev_dataloader, \
-                                        model, device)
-    print("sst_dev: ", dev_sentiment_accuracy, " para_dev: ", \
-        dev_paraphrase_accuracy, " sts_dev: ", dev_sts_corr)
-    
-    if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
-        best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
-        save_model(model, optimizer, args, config, args,filepath)
+    if args.single_task == 'sst':
+        train_sentiment(args, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels)
+    elif args.single_task == 'para':
+        train_paraphrase(args, model, device, para_train_dataloader, para_dev_dataloader)
+    elif args.single_task == 'sts':
+        train_similarity(args, model, device, sts_train_dataloader, sts_dev_dataloader)
 
 
-def test_multitask(args):
+def test_singletask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
         device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -550,13 +465,15 @@ def get_args():
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
 
+    parser.add_argument("--single_task", help='specify single task name: sst, para, sts', type=str, default='sst')
+
     args = parser.parse_args()
     return args
 
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+    args.filepath = f'{args.single_task}-{args.option}-{args.epochs}-{args.lr}-singletask.pt' # Save path.
     seed_everything(args.seed)  # Fix the seed for reproducibility.
-    train_multitask(args)
-    test_multitask(args)
+    train_singletask(args)
+    test_singletask(args)
