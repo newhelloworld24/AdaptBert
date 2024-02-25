@@ -242,7 +242,7 @@ def train_paraphrase(args, config, model, device, para_train_dataloader, para_de
                 model_eval_para_single_task(para_dev_dataloader, model, device)
         
         if dev_paraphrase_accuracy > best_dev_acc:
-        best_dev_acc = dev_paraphrase_accuracy
+            best_dev_acc = dev_paraphrase_accuracy
             save_model(model, optimizer, args, config, args.filepath)
         
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
