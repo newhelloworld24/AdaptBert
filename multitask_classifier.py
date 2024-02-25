@@ -80,7 +80,7 @@ class MultitaskBERT(nn.Module):
         self.paraphrase_project = nn.Linear(config.hidden_size * 2, 1)
 
         # Initialize for semantic textual similarity
-        self.similarity_project = nn.Linear(config.hidden_size, 1)
+        self.similarity_project = nn.Linear(config.hidden_size * 2, 1)
         
 
 
@@ -223,7 +223,7 @@ def train_paraphrase(args, model, device, para_train_dataloader):
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
             y_hat = logits.sigmoid()
-            loss = F.binary_cross_entropy(y_hat, b_labels.view(-1))
+            loss = F.binary_cross_entropy(y_hat[0], b_labels.view(-1))
 
             loss.backward()
             optimizer.step()
@@ -232,13 +232,6 @@ def train_paraphrase(args, model, device, para_train_dataloader):
             num_batches += 1
 
         train_loss = train_loss / (num_batches)
-
-        # train_acc, train_f1, *_ = model_eval_sst(para_train_dataloader, model, device)
-        # dev_acc, dev_f1, *_ = model_eval_sst(para_dev_dataloader, model, device)
-
-        # if dev_acc > best_dev_acc:
-        #     best_dev_acc = dev_acc
-        #     save_model(model, optimizer, args, config, args.filepath)
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
 
@@ -277,13 +270,6 @@ def train_similarity(args, model, device, sts_train_dataloader):
             num_batches += 1
         
         train_loss = train_loss / (num_batches)
-
-        # train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        # dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
-
-        # if dev_acc > best_dev_acc:
-        #     best_dev_acc = dev_acc
-        #     save_model(model, optimizer, args, config, args.filepath)
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
 
@@ -379,8 +365,8 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = logits.sigmoid()
-            loss = F.binary_cross_entropy(y_hat, b_labels.view(-1))
+            y_hat = torch.sigmoid(logits.sigmoid())           
+            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32))
 
             loss.backward()
             optimizer.step()
@@ -407,7 +393,7 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(logits, b_labels.view(-1))
+            loss = F.mse_loss(logits, b_labels.view(-1).to(dtype=torch.float32))
 
             loss.backward()
             optimizer.step()
