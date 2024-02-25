@@ -183,6 +183,7 @@ def train_sentiment(args, config, model, device, sst_train_dataloader, sst_dev_d
             num_batches += 1
 
         train_loss = train_loss / (num_batches)
+        print("train loss: ", train_loss)
 
         (train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids) = \
                     model_eval_sst_single_task(sst_train_dataloader, model, device)
@@ -224,7 +225,7 @@ def train_paraphrase(args, config, model, device, para_train_dataloader, para_de
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
             y_hat = torch.sigmoid(logits.sigmoid())           
-            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32))
+            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32)) / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -233,14 +234,15 @@ def train_paraphrase(args, config, model, device, para_train_dataloader, para_de
             num_batches += 1
 
         train_loss = train_loss / (num_batches)
+        print("train loss: ", train_loss)
 
         (train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids) = \
-                    model_eval_para_single_task(para_train_dataloader, model, device)
+                model_eval_para_single_task(para_train_dataloader, model, device)
         (dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids) = \
-                    model_eval_para_single_task(para_dev_dataloader, model, device)
+                model_eval_para_single_task(para_dev_dataloader, model, device)
         
         if dev_paraphrase_accuracy > best_dev_acc:
-            best_dev_acc = dev_paraphrase_accuracy
+        best_dev_acc = dev_paraphrase_accuracy
             save_model(model, optimizer, args, config, args.filepath)
         
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
@@ -272,7 +274,7 @@ def train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1).to(dtype=torch.float32))
+            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1).to(dtype=torch.float32)) / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -281,6 +283,7 @@ def train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_
             num_batches += 1
         
         train_loss = train_loss / (num_batches)
+        print("train loss: ", train_loss)
 
         (train_sts_corr, train_sts_y_pred, train_sts_sent_ids) = \
                     model_eval_sts_single_task(sts_train_dataloader, model, device)
