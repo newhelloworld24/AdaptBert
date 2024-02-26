@@ -75,6 +75,8 @@ class MultitaskBERT(nn.Module):
         ### TODO
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         # Initialize for sentiment classification
+        self.sentiment_linear = nn.Linear(config.hidden_size, config.hidden_size)
+        self.relu = nn.ReLU()
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
         
         # Initialize for paraphrase detection
@@ -102,8 +104,10 @@ class MultitaskBERT(nn.Module):
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask)
         bert_pooler_output = self.dropout(bert_pooler_output)
-        logits = self.sentiment_project(bert_pooler_output)
-        return logits
+        x = self.sentiment_linear(bert_pooler_output)
+        x = self.relu(x)
+        x = self.sentiment_project(x)
+        return x
 
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
