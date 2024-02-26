@@ -103,10 +103,10 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask)
-        bert_pooler_output = self.dropout(bert_pooler_output)
         x = self.sentiment_linear(bert_pooler_output)
         x = self.relu(x)
         x = self.sentiment_project(x)
+        x = self.dropout(x)
         return x
 
     def predict_paraphrase(self,
