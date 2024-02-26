@@ -49,24 +49,65 @@ class BertSelfAttention(nn.Module):
     # - Before returning, concatenate multi-heads to recover the original shape:
     #   [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
 
-    ### TODO
-    # dot-product attention TODO try additive attention 
-    # query, key shape: [bs, num_attention_heads, seq_len, attention_head_size]
-    bs, num_attention_heads, seq_len, attention_head_size = value.size()
-    S = torch.matmul(query, torch.transpose(key, -2, -1))
-    S = torch.div(S, torch.sqrt(torch.tensor(attention_head_size)))
-    # Before normalizing the scores, use the attention mask to mask out the padding token scores.
-    # S shape: [bs, num_attention_heads, seq_len, seq_len]
-    S = S + attention_mask
-    # Normalizing the scores using softmax
-    norm_S = F.softmax(S, dim=-1)
-    # weighted_sum shape: [bs, num_attention_heads, seq_len, attention_head_size]
-    attention = torch.matmul(norm_S, value)
-    # concatenate multi-heads to recover the original shape:
-    # [bs, seq_len, num_attention_heads * attention_head_size = hidden_size]
-    attention = torch.reshape(torch.transpose(attention, 1, 2), \
-              (bs, seq_len, num_attention_heads*attention_head_size))
-    return attention
+    # ### TODO
+    # # dot-product attention TODO try additive attention 
+    # # query, key shape: [bs, num_attention_heads, seq_len, attention_head_size]
+    # bs, num_attention_heads, seq_len, attention_head_size = value.size()
+    # S = torch.matmul(query, torch.transpose(key, -2, -1))
+    # S = torch.div(S, torch.sqrt(torch.tensor(attention_head_size)))
+    # # Before normalizing the scores, use the attention mask to mask out the padding token scores.
+    # # S shape: [bs, num_attention_heads, seq_len, seq_len]
+    # print(attention_mask)
+    # S = S + attention_mask
+    # # Normalizing the scores using softmax
+    # norm_S = F.softmax(S, dim=-1)
+    # # weighted_sum shape: [bs, num_attention_heads, seq_len, attention_head_size]
+    # attention = torch.matmul(norm_S, value)
+    # # concatenate multi-heads to recover the original shape:
+    # # [bs, seq_len, num_attention_heads * attention_head_size = hidden_size]
+    # attention = torch.reshape(torch.transpose(attention, 1, 2), \
+    #           (bs, seq_len, num_attention_heads*attention_head_size))
+    # return attention
+     #1. Multiple the query and key to get score matrix S
+    # query q: [bs, k, n, h/k], key k: [bs, k, n, h/k] -> S: [bs, k, n, n]
+    # convert query and key from 4d to 3d flattening the first two dimensions
+    bs, k, n, hk = query.size()
+    #print("Query size: ", bs, k, n, hk)
+    qv = query.contiguous().view(-1, query.size(-2), query.size(-1)) # [bs * k, n, h/k]
+    #print("qv size: ", qv.size())
+    kv = key.contiguous().view(-1, key.size(-2), key.size(-1)) # [bs * k, n, h/k]
+    #print("kv size: ", kv.size())
+    # batch multiply q and k transpose, unflatten S into bs, k, n, n
+    S = torch.bmm(qv, kv.transpose(1, 2)).view(bs, k, n, n) # [bs * k, n, n] => [bs, k, n, n]
+    # Divide by the square root of the attention head size
+    S = S / (hk ** 0.5)
+    #print("S size: ", S.size())
+
+    #2. Apply the attention mask to S.
+    # attention_mask: [bs, 1, 1, n]
+    # use masked_fill to set to -inf where attention_mask value is 0 and keep the rest
+    #print("Attention mask size: ", attention_mask.size())
+    S.data.masked_fill_(attention_mask < 0, -float('inf'))
+    #print("S after mask: ", S)
+
+    #3. Normalize the scores with softmax
+    S = F.softmax(S, dim=-1)
+    #print("S after softmax: ", S)
+
+    #4. Multiply the attention scores with the value to get back weighted values
+    # value v: [bs, k, n, h/k]
+    # convert value from 4d to 3d flattening the first two dimensions
+    v = value.contiguous().view(-1, value.size(-2), value.size(-1)) # [bs * k, n, h/k]
+    #print("v size: ", v.size())
+    #print(v)
+    # batch multiply S and v, unflatten into bs, k, n, h/k
+    attn_value = torch.bmm(S.view(-1, n, n), v).view(bs, k, n, hk) # [bs * k, n, h/k] => [bs, k, n, h/k]
+
+    #5. Concatenate multi-heads to recover the original shape
+    attn_value = attn_value.transpose(1, 2).contiguous().view(bs, n, -1) # [bs, k, n, h/k] => [bs, n, k * h/k]
+
+    #print("attn_value: ", attn_value)
+    return attn_value
 
   def forward(self, hidden_states, attention_mask):
     """
