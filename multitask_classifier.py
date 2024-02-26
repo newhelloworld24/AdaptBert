@@ -80,7 +80,7 @@ class MultitaskBERT(nn.Module):
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
         
         # Initialize for paraphrase detection
-        self.paraphrase_linear = nn.Linear(config.hidden_size * 2, config.hidden_size)
+        self.paraphrase_linear = nn.Linear(config.hidden_size, config.hidden_size)
         self.paraphrase_relu = nn.ReLU()
         self.paraphrase_project = nn.Linear(config.hidden_size, 1)
 
@@ -122,10 +122,9 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
-        bert_pooler_output_1 = self.forward(input_ids_1, attention_mask_1)
-        bert_pooler_output_2 = self.forward(input_ids_2, attention_mask_2)
-        bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
-        x = self.dropout(bert_output_concat)
+        bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
+                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
+        x = self.dropout(bert_pooler_output)
         x = self.paraphrase_linear(x)
         x = self.paraphrase_relu(x)
         x = self.paraphrase_project(x)
