@@ -73,14 +73,19 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
+        
         # Initialize for sentiment classification
+        self.sentiment_linear = nn.Linear(config.hidden_size, config.hidden_size)
+        self.sentiment_relu = nn.ReLU()
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
         
         # Initialize for paraphrase detection
-        self.paraphrase_project = nn.Linear(config.hidden_size * 2, 1)
+        self.paraphrase_linear = nn.Linear(config.hidden_size * 2, config.hidden_size)
+        self.paraphrase_relu = nn.ReLU()
+        self.paraphrase_project = nn.Linear(config.hidden_size, 1)
 
         # Initialize for semantic textual similarity
-        self.similarity_project = nn.Linear(config.hidden_size * 2, 1)
+        self.similarity_project = nn.Linear(config.hidden_size, 1)
         
 
 
@@ -103,9 +108,11 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask)
-        bert_pooler_output = self.dropout(bert_pooler_output)
-        logits = self.sentiment_project(bert_pooler_output)
-        return logits
+        x = self.dropout(bert_pooler_output)
+        x = self.sentiment_linear(bert_pooler_output)
+        x = self.sentiment_relu(x)
+        x = self.sentiment_project(x)
+        return x
 
 
     def predict_paraphrase(self,
@@ -118,9 +125,11 @@ class MultitaskBERT(nn.Module):
         bert_pooler_output_1 = self.forward(input_ids_1, attention_mask_1)
         bert_pooler_output_2 = self.forward(input_ids_2, attention_mask_2)
         bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
-        bert_pooler_output = self.dropout(bert_output_concat)
-        logits = self.paraphrase_project(bert_pooler_output)
-        return logits
+        x = self.dropout(bert_output_concat)
+        x = self.paraphrase_linear(x)
+        x = self.paraphrase_relu(x)
+        x = self.paraphrase_project(x)
+        return x
 
     def predict_similarity(self,
                            input_ids_1, attention_mask_1,
