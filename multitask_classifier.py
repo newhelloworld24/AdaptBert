@@ -138,12 +138,11 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
-        bert_pooler_output_1 = self.forward(input_ids_1, attention_mask_1)
-        bert_pooler_output_2 = self.forward(input_ids_2, attention_mask_2)
-        bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
-        bert_pooler_output = self.dropout(bert_output_concat)
-        logits = self.similarity_project(bert_pooler_output)
-        return logits
+        bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
+                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
+        bert_pooler_output = self.dropout(bert_pooler_output)
+        x = self.similarity_project(bert_pooler_output)
+        return x
 
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
