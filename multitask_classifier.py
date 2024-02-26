@@ -157,130 +157,6 @@ def save_model(model, optimizer, args, config, filepath):
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
 
-def train_sentiment(args, model, device, sst_train_dataloader):
-    '''Train MultitaskBERT for sentiment classification.
-
-    Currently only trains on SST dataset. The way you incorporate training examples
-    from other datasets into the training procedure is up to you. To begin, take a
-    look at test_multitask below to see how you can use the custom torch `Dataset`s
-    in datasets.py to load in examples from the Quora and SemEval datasets.
-    '''
-    lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = 0
-
-    # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            b_ids, b_mask, b_labels = (batch['token_ids'],
-                                       batch['attention_mask'], batch['labels'])
-
-            b_ids = b_ids.to(device)
-            b_mask = b_mask.to(device)
-            b_labels = b_labels.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-
-        train_loss = train_loss / (num_batches)
-
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
-
-        if dev_acc > best_dev_acc:
-            best_dev_acc = dev_acc
-            save_model(model, optimizer, args, config, args.filepath)
-
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
-    
-def train_paraphrase(args, model, device, para_train_dataloader):
-    '''Train MultitaskBERT for paraphrase detection.
-    '''
-
-    lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = 0
-
-    # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
-
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = logits.sigmoid()
-            loss = F.binary_cross_entropy(y_hat[0], b_labels.view(-1))
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-
-        train_loss = train_loss / (num_batches)
-
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
-
-def train_similarity(args, model, device, sts_train_dataloader):
-    '''Train MultitaskBERT for semantic textual similarity.
-    '''
-    lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = 0
-
-    # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        num_batches = 0
-        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
-
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(logits, b_labels.view(-1))
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-        
-        train_loss = train_loss / (num_batches)
-
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}")
-
 def train_multitask(args):
     # Get device
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -370,12 +246,12 @@ def train_multitask(args):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
+            b_labels = b_labels.to(device, dtype=torch.float32)
 
             optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = torch.sigmoid(logits.sigmoid())           
-            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32))
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)          
+            loss = F.binary_cross_entropy_with_logits(torch.squeeze(logits), b_labels.view(-1), \
+                                        reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -399,11 +275,11 @@ def train_multitask(args):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
+            b_labels = b_labels.to(device, dtype=torch.float3)
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1).to(dtype=torch.float32))
+            loss = F.mse_loss(torch.squeeze(logits), b_labels.view(-1), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -434,6 +310,7 @@ def train_multitask(args):
         best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
         save_model(model, optimizer, args, config, args,filepath)
 
+    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
 
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
