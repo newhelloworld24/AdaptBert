@@ -82,6 +82,7 @@ class MultitaskBERT(nn.Module):
 
         # Initialize for semantic textual similarity
         self.similarity_project_1 = nn.Linear(config.hidden_size * 2, config.hidden_size)
+        self.relu = nn.ReLU()
         self.similarity_project_2 = nn.Linear(config.hidden_size, 1)
 
     def forward(self, input_ids, attention_mask):
@@ -132,7 +133,7 @@ class MultitaskBERT(nn.Module):
         bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
         bert_pooler_output = self.dropout(bert_output_concat)
         x = self.similarity_project_1(bert_pooler_output)
-        x = nn.Relu(x)
+        x = self.relu(x)
         x = self.similarity_project_2(x)
         return x
 
