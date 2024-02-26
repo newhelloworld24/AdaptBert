@@ -32,7 +32,7 @@ from datasets import (
     load_multitask_data
 )
 
-from evaluation import model_eval_multitask, model_eval_sst_single_task, \
+from evaluation import model_eval_multitask, model_eval_test_multitask, model_eval_sst_single_task, \
                        model_eval_para_single_task, model_eval_sts_single_task
 
 
@@ -81,9 +81,7 @@ class MultitaskBERT(nn.Module):
         self.paraphrase_project = nn.Linear(config.hidden_size * 2, 1)
 
         # Initialize for semantic textual similarity
-        self.similarity_project_1 = nn.Linear(config.hidden_size * 2, config.hidden_size)
-        self.relu = nn.ReLU()
-        self.similarity_project_2 = nn.Linear(config.hidden_size, 1)
+        self.similarity_project = nn.Linear(config.hidden_size, 1)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -128,13 +126,10 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
-        bert_pooler_output_1 = self.forward(input_ids_1, attention_mask_1)
-        bert_pooler_output_2 = self.forward(input_ids_2, attention_mask_2)
-        bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
-        bert_pooler_output = self.dropout(bert_output_concat)
-        x = self.similarity_project_1(bert_pooler_output)
-        x = self.relu(x)
-        x = self.similarity_project_2(x)
+        bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
+                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
+        bert_pooler_output = self.dropout(bert_pooler_output)
+        x = self.similarity_project(bert_pooler_output)
         return x
 
 def save_model(model, optimizer, args, config, filepath):
