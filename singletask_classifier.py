@@ -34,6 +34,7 @@ from datasets import (
 
 from evaluation import model_eval_multitask, model_eval_test_multitask, model_eval_sst_single_task, \
                        model_eval_para_single_task, model_eval_sts_single_task
+from multitask_classifier import MultitaskBERT, count_parameters
 
 
 TQDM_DISABLE=False
@@ -53,92 +54,6 @@ def seed_everything(seed=11711):
 BERT_HIDDEN_SIZE = 768
 N_SENTIMENT_CLASSES = 5
 
-
-class MultitaskBERT(nn.Module):
-    '''
-    This module should use BERT for 3 tasks:
-
-    - Sentiment classification (predict_sentiment)
-    - Paraphrase detection (predict_paraphrase)
-    - Semantic Textual Similarity (predict_similarity)
-    '''
-    def __init__(self, config):
-        super(MultitaskBERT, self).__init__()
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
-        # Pretrain mode does not require updating BERT paramters.
-        for param in self.bert.parameters():
-            if config.option == 'pretrain':
-                param.requires_grad = False
-            elif config.option == 'finetune':
-                param.requires_grad = True
-        # You will want to add layers here to perform the downstream tasks.
-        ### TODO
-        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
-        # Initialize for sentiment classification
-        self.sentiment_linear = nn.Linear(config.hidden_size, config.hidden_size)
-        self.relu = nn.ReLU()
-        self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
-        
-        # Initialize for paraphrase detection
-        self.paraphrase_linear = nn.Linear(config.hidden_size * 2, config.hidden_size)
-        self.paraphrase_relu = nn.ReLU()
-        self.paraphrase_project = nn.Linear(config.hidden_size, 1)
-
-        # Initialize for semantic textual similarity
-        self.similarity_project = nn.Linear(config.hidden_size, 1)
-
-    def forward(self, input_ids, attention_mask):
-        'Takes a batch of sentences and produces embeddings for them.'
-        # The final BERT embedding is the hidden state of [CLS] token (the first token)
-        # Here, you can start by just returning the embeddings straight from BERT.
-        # When thinking of improvements, you can later try modifying this
-        # (e.g., by adding other layers).
-        ### TODO
-        bert_pooler_output = self.bert(input_ids, attention_mask)['pooler_output']
-        return bert_pooler_output
-
-    def predict_sentiment(self, input_ids, attention_mask):
-        '''Given a batch of sentences, outputs logits for classifying sentiment.
-        There are 5 sentiment classes:
-        (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
-        Thus, your output should contain 5 logits for each sentence.
-        '''
-        ### TODO
-        bert_pooler_output = self.forward(input_ids, attention_mask)
-        x = self.dropout(bert_pooler_output)
-        x = self.sentiment_linear(bert_pooler_output)
-        x = self.relu(x)
-        x = self.sentiment_project(x)
-        return x
-
-    def predict_paraphrase(self,
-                           input_ids_1, attention_mask_1,
-                           input_ids_2, attention_mask_2):
-        '''Given a batch of pairs of sentences, outputs a single logit for predicting whether they are paraphrases.
-        Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
-        during evaluation.
-        '''
-        bert_pooler_output_1 = self.forward(input_ids_1, attention_mask_1)
-        bert_pooler_output_2 = self.forward(input_ids_2, attention_mask_2)
-        bert_output_concat = torch.cat((bert_pooler_output_1, bert_pooler_output_2), dim=1)
-        x = self.dropout(bert_output_concat)
-        x = self.paraphrase_linear(x)
-        x = self.paraphrase_relu(x)
-        x = self.paraphrase_project(x)
-        return x
-
-    def predict_similarity(self,
-                           input_ids_1, attention_mask_1,
-                           input_ids_2, attention_mask_2):
-        '''Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
-        Note that your output should be unnormalized (a logit).
-        '''
-        ### TODO
-        bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
-                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
-        bert_pooler_output = self.dropout(bert_pooler_output)
-        x = self.similarity_project(bert_pooler_output)
-        return x
 
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
@@ -230,9 +145,9 @@ def train_paraphrase(args, config, model, device, para_train_dataloader, para_de
             b_labels = b_labels.to(device)
 
             optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            y_hat = torch.sigmoid(logits.sigmoid())           
-            loss = F.binary_cross_entropy(torch.squeeze(y_hat), b_labels.view(-1).to(dtype=torch.float32)) / args.batch_size
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)          
+            loss = F.binary_cross_entropy_with_logits(torch.squeeze(logits), b_labels.view(-1), \
+                                        reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
@@ -344,6 +259,7 @@ def train_singletask(args):
 
     model = MultitaskBERT(config)
     model = model.to(device)
+    print("model parameter: ", count_parameters(model))
 
     if args.single_task == 'sst':
         train_sentiment(args, config, model, device, sst_train_dataloader, sst_dev_dataloader, num_labels)
@@ -351,9 +267,11 @@ def train_singletask(args):
         train_paraphrase(args, config, model, device, para_train_dataloader, para_dev_dataloader)
     elif args.single_task == 'sts':
         train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_dataloader)
+    
+    print("model parameter: ", count_parameters(model))
 
 
-def test_singletask(args):
+def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
         device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -364,6 +282,7 @@ def test_singletask(args):
         model.load_state_dict(saved['model'])
         model = model.to(device)
         print(f"Loaded model to test from {args.filepath}")
+        print("model parameter: ", count_parameters(model))
 
         sst_test_data, num_labels,para_test_data, sts_test_data = \
             load_multitask_data(args.sst_test,args.para_test, args.sts_test, split='test')
@@ -486,4 +405,4 @@ if __name__ == "__main__":
     args.filepath = f'{args.single_task}-{args.option}-{args.epochs}-{args.lr}-singletask.pt' # Save path.
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_singletask(args)
-    test_singletask(args)
+    test_multitask(args)

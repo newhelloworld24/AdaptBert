@@ -157,6 +157,9 @@ def save_model(model, optimizer, args, config, filepath):
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
 
+def count_parameters(model): 
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 def train_multitask(args):
     # Get device
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -199,9 +202,7 @@ def train_multitask(args):
     model = MultitaskBERT(config)
     model = model.to(device)
 
-    # train_sentiment(args, model, device, sst_train_dataloader, num_labels)
-    # train_paraphrase(args, model, device, para_train_dataloader)
-    # train_similarity(args, model, device, sts_train_dataloader)
+    print("model parameter: ", count_parameters(model))
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -290,27 +291,28 @@ def train_multitask(args):
         train_loss = train_loss / (num_batches)
         print("sts train_loss: ", train_loss)
 
-    (train_sentiment_accuracy, sst_y_pred, sst_sent_ids,
-    train_paraphrase_accuracy, para_y_pred, para_sent_ids,
-    train_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sentiment_train_dataloader, \
-                                        paraphrase_train_dataloader, sts_train_dataloader, \
-                                        model, device)
-    print("sst_train: ", train_sentiment_accuracy, " para_train: ", \
-        train_paraphrase_accuracy, " sts_train: ", train_sts_corr)
-    
-    (dev_sentiment_accuracy, sst_y_pred, sst_sent_ids,
-    dev_paraphrase_accuracy, para_y_pred, para_sent_ids,
-    dev_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sentiment_dev_dataloader, \
-                                        paraphrase_dev_dataloader, sts_dev_dataloader, \
-                                        model, device)
-    print("sst_dev: ", dev_sentiment_accuracy, " para_dev: ", \
-        dev_paraphrase_accuracy, " sts_dev: ", dev_sts_corr)
-    
-    if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
-        best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
-        save_model(model, optimizer, args, config, args,filepath)
+        (train_sentiment_accuracy, sst_y_pred, sst_sent_ids,
+        train_paraphrase_accuracy, para_y_pred, para_sent_ids,
+        train_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sst_train_dataloader, \
+                                            para_train_dataloader, sts_train_dataloader, \
+                                            model, device)
+        print("sst_train: ", train_sentiment_accuracy, " para_train: ", \
+            train_paraphrase_accuracy, " sts_train: ", train_sts_corr)
+        
+        (dev_sentiment_accuracy, sst_y_pred, sst_sent_ids,
+        dev_paraphrase_accuracy, para_y_pred, para_sent_ids,
+        dev_sts_corr, sts_y_pred, sts_sent_ids) = model_eval_multitask(sst_dev_dataloader, \
+                                            para_dev_dataloader, sts_dev_dataloader, \
+                                            model, device)
+        print("sst_dev: ", dev_sentiment_accuracy, " para_dev: ", \
+            dev_paraphrase_accuracy, " sts_dev: ", dev_sts_corr)
+        
+        if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
+            best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
+            save_model(model, optimizer, args, config, args,filepath)
 
-    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print("model parameter: ", count_parameters(model))
 
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
