@@ -72,20 +72,22 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         
         # Initialize for sentiment classification
         self.sentiment_linear = nn.Linear(config.hidden_size, config.hidden_size)
         self.sentiment_relu = nn.ReLU()
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
+        self.sentiment_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         
         # Initialize for paraphrase detection
         self.paraphrase_linear = nn.Linear(config.hidden_size, config.hidden_size)
         self.paraphrase_relu = nn.ReLU()
         self.paraphrase_project = nn.Linear(config.hidden_size, 1)
+        self.paraphrase_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
         # Initialize for semantic textual similarity
         self.similarity_project = nn.Linear(config.hidden_size, 1)
+        self.similarity_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         
 
 
@@ -108,7 +110,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask)
-        x = self.dropout(bert_pooler_output)
+        x = self.sentiment_dropout(bert_pooler_output)
         x = self.sentiment_linear(bert_pooler_output)
         x = self.sentiment_relu(x)
         x = self.sentiment_project(x)
@@ -124,7 +126,7 @@ class MultitaskBERT(nn.Module):
         '''
         bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
                                             torch.cat((attention_mask_1, attention_mask_2), dim=1))
-        x = self.dropout(bert_pooler_output)
+        x = self.paraphrase_dropout(bert_pooler_output)
         x = self.paraphrase_linear(x)
         x = self.paraphrase_relu(x)
         x = self.paraphrase_project(x)
@@ -139,7 +141,7 @@ class MultitaskBERT(nn.Module):
         ### TODO
         bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
                                             torch.cat((attention_mask_1, attention_mask_2), dim=1))
-        bert_pooler_output = self.dropout(bert_pooler_output)
+        bert_pooler_output = self.similarity_dropout(bert_pooler_output)
         x = self.similarity_project(bert_pooler_output)
         return x
 
@@ -310,8 +312,8 @@ def train_multitask(args):
         if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
             best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
             save_model(model, optimizer, args, config, args.filepath)
-
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
+        print(f"Epoch {epoch}: train_sentiment_accuracy :: {train_sentiment_accuracy :.3f}, train_paraphrase_accuracy :: {train_paraphrase_accuracy :.3f}, train_sts_corr :: {train_sts_corr :.3f}")
+        print(f"Epoch {epoch}: dev_sentiment_accuracy :: {dev_sentiment_accuracy :.3f}, dev_paraphrase_accuracy :: {dev_paraphrase_accuracy :.3f}, dev_sts_corr :: {dev_sts_corr :.3f}")
         print("model parameter: ", count_parameters(model))
 
 def test_multitask(args):
