@@ -142,7 +142,7 @@ def train_paraphrase(args, config, model, device, para_train_dataloader, para_de
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
+            b_labels = b_labels.to(device, dtype=torch.float32)
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)          
@@ -192,7 +192,7 @@ def train_similarity(args, config, model, device, sts_train_dataloader, sts_dev_
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device)
+            b_labels = b_labels.to(device, dtype=torch.float32)
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)

@@ -276,7 +276,7 @@ def train_multitask(args):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
-            b_labels = b_labels.to(device, dtype=torch.float3)
+            b_labels = b_labels.to(device, dtype=torch.float32)
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
@@ -309,7 +309,7 @@ def train_multitask(args):
         
         if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
             best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
-            save_model(model, optimizer, args, config, args,filepath)
+            save_model(model, optimizer, args, config, args.filepath)
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_paraphrase_accuracy :.3f}, dev acc :: {dev_paraphrase_accuracy :.3f}")
         print("model parameter: ", count_parameters(model))
