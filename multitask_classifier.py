@@ -65,11 +65,14 @@ class MultitaskBERT(nn.Module):
         super(MultitaskBERT, self).__init__()
         self.bert = BertModel.from_pretrained('bert-base-uncased')
         # Pretrain mode does not require updating BERT paramters.
-        for param in self.bert.parameters():
+        for name, param in self.bert.named_parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
             elif config.option == 'finetune':
-                param.requires_grad = True
+                if config.enable_adapter_mode:
+                    param.requires_grad = True if "adapter" in name else False
+                else:
+                    param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         
@@ -197,6 +200,9 @@ def train_multitask(args):
               'num_labels': len(num_labels),
               'hidden_size': 768,
               'data_dir': '.',
+              'enable_adapter_mode': args.enable_adapter_mode,
+              "adapter_reduction_factor": args.adapter_reduction_factor,
+              "adapter_non_linearity": args.adapter_non_linearity,
               'option': args.option}
 
     config = SimpleNamespace(**config)
@@ -437,6 +443,11 @@ def get_args():
     parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
+
+    # adpter
+    parser.add_argument("--enable_adapter_mode", default=True)
+    parser.add_argument("--adapter_reduction_factor", type=int, default=8)
+    parser.add_argument("--adapter_non_linearity", type=str, default="gelu")
 
     args = parser.parse_args()
     return args

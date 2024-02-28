@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from base_bert import BertPreTrainedModel
 from utils import *
+from adapter import Adapter
 
 
 class BertSelfAttention(nn.Module):
@@ -109,6 +110,14 @@ class BertLayer(nn.Module):
         self.out_layer_norm = nn.LayerNorm(
             config.hidden_size, eps=config.layer_norm_eps)
         self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
+        # Adapter
+        self.adapter_1 = Adapter(config.hidden_size)
+        self.adapter_2 = Adapter(config.intermediate_size)
+
+        for name, param in self.named_parameters():
+          if not name.startswith("adapter"):
+            param.requires_grad = False
+          # print("name: ", name, " requires_grad: ", param.requires_grad)
 
     def add_norm(self, input, output, dense_layer, dropout, ln_layer):
         """
@@ -140,12 +149,23 @@ class BertLayer(nn.Module):
         # TODO
         # 1. A multi-head attention layer (BertSelfAttention).
         multi_head_output = self.self_attention(hidden_states, attention_mask)
+
+        # 1.5 if Adapter mode is enabled, we apply adapter btw attention and add-norm
+        #if (self.config.enable_adapter_mode):
+        if True:
+            multi_head_output = self.adapter_1(multi_head_output)
+
         # 2. An add-norm operation that takes the input and output of the multi-head attention layer.
         add_norm_multi_head_output = self.add_norm(hidden_states, multi_head_output, self.attention_dense,
                                                    self.attention_dropout, self.attention_layer_norm)
         # 3. A feed forward layer.
         feed_forward_dense = self.interm_dense(add_norm_multi_head_output)
         feed_forward_output = self.interm_af(feed_forward_dense)
+
+        # 3.5 if Adapter mode is enabled, we apply adapter btw 2 layers of FF and add-norm
+        # if (self.config.enable_adapter_mode):
+        if True:
+            feed_forward_output = self.adapter_2(feed_forward_output)
         # 4. An add-norm operation that takes the input and output of the feed forward layer.
         add_norm_ff_output = self.add_norm(add_norm_multi_head_output, feed_forward_output, self.out_dense,
                                            self.out_dropout, self.out_layer_norm)
