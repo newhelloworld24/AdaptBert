@@ -36,7 +36,7 @@ class BertPreTrainedModel(nn.Module):
     return get_parameter_dtype(self)
 
   @classmethod
-  def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
+  def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], extra_config, *model_args, **kwargs):
     config = kwargs.pop("config", None)
     state_dict = kwargs.pop("state_dict", None)
     cache_dir = kwargs.pop("cache_dir", None)
@@ -106,6 +106,9 @@ class BertPreTrainedModel(nn.Module):
       resolved_archive_file = None
 
     config.name_or_path = pretrained_model_name_or_path
+
+    for k,v in extra_config.items():
+      setattr(config, k, v)
 
     # Instantiate model.
     model = cls(config, *model_args, **model_kwargs)

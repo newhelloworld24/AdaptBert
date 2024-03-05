@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from utils import init_linear_layer, get_activation
 
-class Adapter(nn.Module):
+class BasicAdapter(nn.Module):
     """Conventional Adapter layer, in which the weights of up and down sampler modules
     are parameters and are optimized."""
 

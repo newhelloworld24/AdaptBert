@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from base_bert import BertPreTrainedModel
 from utils import *
-from adapter import Adapter
+from adapter import BasicAdapter
 
 
 class BertSelfAttention(nn.Module):
@@ -110,14 +110,23 @@ class BertLayer(nn.Module):
         self.out_layer_norm = nn.LayerNorm(
             config.hidden_size, eps=config.layer_norm_eps)
         self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
-        # Adapter
-        self.adapter_1 = Adapter(config.hidden_size)
-        self.adapter_2 = Adapter(config.intermediate_size)
+        # Initialize Adapter
+        self.adapter_mode = config.adapter_mode
+        if self.adapter_mode is not None:
+            self.adapter_self_attention, self.adapter_feed_forward = \
+                self.init_adapter(config.adapter_mode, config.task_names, \
+                                  config.hidden_size, config.intermediate_size)
 
-        for name, param in self.named_parameters():
-          if not name.startswith("adapter"):
-            param.requires_grad = False
-          # print("name: ", name, " requires_grad: ", param.requires_grad)
+    def init_adapter(self, adapter_mode, task_names, hidden_size, intermediate_size):
+        if adapter_mode == 'basic':
+            adapter_self_attention = {task: task for task in task_names.split()}
+            adapter_feed_forward = {task: task for task in task_names.split()}
+            for task in task_names.split(','):
+                adapter_self_attention[task] = BasicAdapter(hidden_size)
+                adapter_feed_forward[task] = BasicAdapter(intermediate_size)
+            return adapter_self_attention, adapter_feed_forward
+        # elif adapter_mode == 'hyper':
+        #     #TODO
 
     def add_norm(self, input, output, dense_layer, dropout, ln_layer):
         """
@@ -136,7 +145,7 @@ class BertLayer(nn.Module):
         x = ln_layer(x + input)
         return x
 
-    def forward(self, hidden_states, attention_mask):
+    def forward(self, hidden_states, attention_mask, task_name):
         """
         hidden_states: either from the embedding layer (first BERT layer) or from the previous BERT layer
         as shown in the left of Figure 1 of https://arxiv.org/pdf/1706.03762.pdf.
@@ -152,8 +161,8 @@ class BertLayer(nn.Module):
 
         # 1.5 if Adapter mode is enabled, we apply adapter btw attention and add-norm
         #if (self.config.enable_adapter_mode):
-        if True:
-            multi_head_output = self.adapter_1(multi_head_output)
+        if self.adapter_mode is not None:
+            multi_head_output = self.adapter_self_attention[task_name](multi_head_output)
 
         # 2. An add-norm operation that takes the input and output of the multi-head attention layer.
         add_norm_multi_head_output = self.add_norm(hidden_states, multi_head_output, self.attention_dense,
@@ -164,8 +173,8 @@ class BertLayer(nn.Module):
 
         # 3.5 if Adapter mode is enabled, we apply adapter btw 2 layers of FF and add-norm
         # if (self.config.enable_adapter_mode):
-        if True:
-            feed_forward_output = self.adapter_2(feed_forward_output)
+        if self.adapter_mode is not None:
+            feed_forward_output = self.adapter_feed_forward[task_name](feed_forward_output)
         # 4. An add-norm operation that takes the input and output of the feed forward layer.
         add_norm_ff_output = self.add_norm(add_norm_multi_head_output, feed_forward_output, self.out_dense,
                                            self.out_dropout, self.out_layer_norm)
@@ -238,7 +247,7 @@ class BertModel(BertPreTrainedModel):
         embeds = self.embed_dropout(embeds)
         return embeds
 
-    def encode(self, hidden_states, attention_mask):
+    def encode(self, hidden_states, attention_mask, task_name):
         """
         hidden_states: the output from the embedding layer [batch_size, seq_len, hidden_size]
         attention_mask: [batch_size, seq_len]
@@ -254,11 +263,11 @@ class BertModel(BertPreTrainedModel):
         for i, layer_module in enumerate(self.bert_layers):
             # Feed the encoding from the last bert_layer to the next.
             hidden_states = layer_module(
-                hidden_states, extended_attention_mask)
+                hidden_states, extended_attention_mask, task_name)
 
         return hidden_states
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, task_name):
         """
         input_ids: [batch_size, seq_len], seq_len is the max length of the batch
         attention_mask: same size as input_ids, 1 represents non-padding tokens, 0 represents padding tokens
@@ -268,7 +277,7 @@ class BertModel(BertPreTrainedModel):
 
         # Feed to a transformer (a stack of BertLayers).
         sequence_output = self.encode(
-            embedding_output, attention_mask=attention_mask)
+            embedding_output, attention_mask=attention_mask, task_name=task_name)
 
         # Get cls token hidden state.
         first_tk = sequence_output[:, 0]

@@ -63,13 +63,13 @@ class MultitaskBERT(nn.Module):
     '''
     def __init__(self, config):
         super(MultitaskBERT, self).__init__()
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.bert = BertModel.from_pretrained('bert-base-uncased', extra_config=config.__dict__)
         # Pretrain mode does not require updating BERT paramters.
         for name, param in self.bert.named_parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
             elif config.option == 'finetune':
-                if config.enable_adapter_mode:
+                if config.adapter_mode is not None:
                     param.requires_grad = True if "adapter" in name else False
                 else:
                     param.requires_grad = True
@@ -94,14 +94,14 @@ class MultitaskBERT(nn.Module):
         
 
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, task_name):
         'Takes a batch of sentences and produces embeddings for them.'
         # The final BERT embedding is the hidden state of [CLS] token (the first token)
         # Here, you can start by just returning the embeddings straight from BERT.
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        bert_pooler_output = self.bert(input_ids, attention_mask)['pooler_output']
+        bert_pooler_output = self.bert(input_ids, attention_mask, task_name)['pooler_output']
         return bert_pooler_output
 
 
@@ -112,7 +112,7 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         '''
         ### TODO
-        bert_pooler_output = self.forward(input_ids, attention_mask)
+        bert_pooler_output = self.forward(input_ids, attention_mask, 'sst')
         x = self.sentiment_dropout(bert_pooler_output)
         x = self.sentiment_linear(bert_pooler_output)
         x = self.sentiment_relu(x)
@@ -128,7 +128,7 @@ class MultitaskBERT(nn.Module):
         during evaluation.
         '''
         bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
-                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
+                                            torch.cat((attention_mask_1, attention_mask_2), dim=1), 'para')
         x = self.paraphrase_dropout(bert_pooler_output)
         x = self.paraphrase_linear(x)
         x = self.paraphrase_relu(x)
@@ -143,7 +143,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
-                                            torch.cat((attention_mask_1, attention_mask_2), dim=1))
+                                            torch.cat((attention_mask_1, attention_mask_2), dim=1), 'sts')
         bert_pooler_output = self.similarity_dropout(bert_pooler_output)
         x = self.similarity_project(bert_pooler_output)
         return x
@@ -200,7 +200,8 @@ def train_multitask(args):
               'num_labels': len(num_labels),
               'hidden_size': 768,
               'data_dir': '.',
-              'enable_adapter_mode': args.enable_adapter_mode,
+              'adapter_mode': args.adapter_mode,
+              'task_names': args.task_names,
               "adapter_reduction_factor": args.adapter_reduction_factor,
               "adapter_non_linearity": args.adapter_non_linearity,
               'option': args.option}
@@ -445,7 +446,8 @@ def get_args():
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
 
     # adpter
-    parser.add_argument("--enable_adapter_mode", default=True)
+    parser.add_argument("--adapter_mode", type=str, default=None, choices=('basic','hyper'))
+    parser.add_argument("--task_names", type=str, default="sst,para,sts")
     parser.add_argument("--adapter_reduction_factor", type=int, default=8)
     parser.add_argument("--adapter_non_linearity", type=str, default="gelu")
 
