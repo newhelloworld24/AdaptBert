@@ -159,7 +159,7 @@ class BertLayer(nn.Module):
         if self.adapter_mode == 'basic':
             multi_head_output = self.basic_adapter_self_attention[task_name](multi_head_output)
         elif self.adapter_mode == 'hyper':
-            multi_head_output = self.hyper_adapter_self_attention(multi_head_output, task_name, self.layer_id, 0)
+            multi_head_output = self.hyper_adapter_self_attention(multi_head_output, task_name, self.layer_id)
 
         # 2. An add-norm operation that takes the input and output of the multi-head attention layer.
         add_norm_multi_head_output = self.add_norm(hidden_states, multi_head_output, self.attention_dense,
@@ -173,7 +173,7 @@ class BertLayer(nn.Module):
         if self.adapter_mode == 'basic':
             multi_head_output = self.basic_adapter_feed_forward[task_name](feed_forward_output)
         elif self.adapter_mode == 'hyper':
-            multi_head_output = self.hyper_adapter_feed_forward(feed_forward_output, task_name, self.layer_id, 1)
+            multi_head_output = self.hyper_adapter_feed_forward(feed_forward_output, task_name, self.layer_id)
         # 4. An add-norm operation that takes the input and output of the feed forward layer.
         add_norm_ff_output = self.add_norm(add_norm_multi_head_output, feed_forward_output, self.out_dense,
                                            self.out_dropout, self.out_layer_norm)

@@ -457,9 +457,9 @@ def get_args():
     parser.add_argument("--adapter_mode", type=str, default=None, choices=('basic','hyper'))
     parser.add_argument("--task_names", type=str, default="sst,para,sts")
     parser.add_argument("--adapter_hidden_size", type=int, default=8)
-    parser.add_argument("--task_embedding_size", type=int, default=64)
-    parser.add_argument("--task_hidden_size", type=int, default=128)
-    parser.add_argument("--task_embedding_input_size", type=int, default=64*3)
+    parser.add_argument("--task_embedding_size", type=int, default=16)
+    parser.add_argument("--task_hidden_size", type=int, default=16)
+    parser.add_argument("--task_embedding_input_size", type=int, default=16*2)
     parser.add_argument("--enable_adapter_layer_norm", type=bool, default=True)
     
 

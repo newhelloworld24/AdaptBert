@@ -58,7 +58,6 @@ class AdapterHyperNet(nn.Module):
         self.task_names = config.task_names
         self.layer_id_embeddings = nn.Embedding(self.num_hidden_layers,
                                                 self.task_embedding_size)
-        self.position_id_embeddings = nn.Embedding(2, self.task_embedding_size)
         # Init task to embeddings dictionary
         self.task_to_embeddings = {}
         for task in self.task_names.split(','):
@@ -71,21 +70,19 @@ class AdapterHyperNet(nn.Module):
         self.up_sampler_hypernet = TaskConditionalHyperNet(config, self.adapter_hidden_size, input_dim)
         self.layer_norm_hypernet = LayerNormHyperNet(config, input_dim)
     
-    def get_embedding(self, task_name, layer_id, position_id):
+    def get_embedding(self, task_name, layer_id):
         task_embedding = self.task_to_embeddings[task_name]
         layer_id_tensor = torch.tensor([layer_id], dtype=torch.long).to(self.device)
         layer_embedding = self.layer_id_embeddings(layer_id_tensor)
-        type_id_tensor = torch.tensor([position_id], dtype=torch.long).to(self.device)
-        type_embedding = self.position_id_embeddings(type_id_tensor)
-        embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1), type_embedding.view(1, -1)],
+        embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1)],
                                axis=0)
         embedding = self.task_embedding_hypernet(embedding.view(-1))
         return embedding
     
-    def forward(self, task_name, layer_id, position_id):
+    def forward(self, task_name, layer_id):
         ### position_id = 0, self attention adapter
         ### position_id = 1, feed forward adapter
-        embeddings = self.get_embedding(task_name, layer_id, position_id)
+        embeddings = self.get_embedding(task_name, layer_id)
 
         down_sampler_weight, down_sampler_bias = self.down_sampler_hypernet(embeddings)
         up_sampler_weight, up_sampler_bias = self.up_sampler_hypernet(embeddings)
@@ -131,8 +128,8 @@ class HyperAdapter(nn.Module):
         self.adapter_hypernet = AdapterHyperNet(config, input_dim)
         self.enable_adapter_layer_norm = config.enable_adapter_layer_norm
 
-    def forward(self, input, task_name, layer_id, position_id):
-        hypernet_output = self.adapter_hypernet.forward(task_name, layer_id, position_id)
+    def forward(self, input, task_name, layer_id):
+        hypernet_output = self.adapter_hypernet.forward(task_name, layer_id)
         x = F.linear(input, weight=hypernet_output.down_sampler_weight,
                         bias=hypernet_output.down_sampler_bias)
         
