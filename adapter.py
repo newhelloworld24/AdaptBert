@@ -62,7 +62,8 @@ class AdapterHyperNet(nn.Module):
         # Init task to embeddings dictionary
         self.task_to_embeddings = {}
         for task in self.task_names.split(','):
-            self.task_to_embeddings[task] = nn.Parameter(torch.Tensor(torch.randn(self.task_embedding_size)))
+            self.task_to_embeddings[task] = nn.Parameter(\
+                torch.Tensor(torch.randn(self.task_embedding_size))).to(self.device)
         
         # Hypernet
         self.task_embedding_hypernet = TaskEmbeddingHyperNet(config)
