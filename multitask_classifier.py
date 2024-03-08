@@ -214,6 +214,7 @@ def train_multitask(args):
               'option': args.option}
 
     config = SimpleNamespace(**config)
+    config.device = device
 
     model = MultitaskBERT(config)
     model = model.to(device)

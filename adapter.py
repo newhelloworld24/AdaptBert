@@ -51,6 +51,7 @@ class AdapterHyperNet(nn.Module):
     """Generate three hypernet: task embedding hypernet, task conditional hypernet and layer norm hypernet"""
     def __init__(self, config, input_dim):
         super().__init__()
+        self.device = config.device
         self.task_embedding_size = config.task_embedding_size
         self.adapter_hidden_size = config.adapter_hidden_size
         self.num_hidden_layers = config.num_hidden_layers
@@ -72,9 +73,9 @@ class AdapterHyperNet(nn.Module):
     def get_embedding(self, task_name, layer_id, position_id):
         task_embedding = self.task_to_embeddings[task_name]
         layer_id_tensor = torch.tensor([layer_id], dtype=torch.long)
-        layer_embedding = self.layer_id_embeddings(layer_id_tensor)
+        layer_embedding = self.layer_id_embeddings(layer_id_tensor).to(self.device)
         type_id_tensor = torch.tensor([position_id], dtype=torch.long)
-        type_embedding = self.position_id_embeddings(type_id_tensor)
+        type_embedding = self.position_id_embeddings(type_id_tensor).to(self.device)
         embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1), type_embedding.view(1, -1)],
                                axis=0)
         embedding = self.task_embedding_hypernet(embedding.view(-1))
