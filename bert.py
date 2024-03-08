@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import collections
 from base_bert import BertPreTrainedModel
 from utils import *
-from adapter import BasicAdapter
+from adapter import BasicAdapter, HyperAdapter, AdapterHyperNet
 
 
 class BertSelfAttention(nn.Module):
@@ -90,7 +91,7 @@ class BertSelfAttention(nn.Module):
 
 
 class BertLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_id):
         super().__init__()
         # Multi-head attention.
         self.self_attention = BertSelfAttention(config)
@@ -111,22 +112,16 @@ class BertLayer(nn.Module):
             config.hidden_size, eps=config.layer_norm_eps)
         self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
         # Initialize Adapter
+        self.layer_id = layer_id
         self.adapter_mode = config.adapter_mode
-        if self.adapter_mode is not None:
-            self.adapter_self_attention, self.adapter_feed_forward = \
-                self.init_adapter(config.adapter_mode, config.task_names, \
-                                  config.hidden_size, config.intermediate_size)
-
-    def init_adapter(self, adapter_mode, task_names, hidden_size, intermediate_size):
-        if adapter_mode == 'basic':
-            adapter_self_attention = {task: task for task in task_names.split()}
-            adapter_feed_forward = {task: task for task in task_names.split()}
-            for task in task_names.split(','):
-                adapter_self_attention[task] = BasicAdapter(hidden_size)
-                adapter_feed_forward[task] = BasicAdapter(intermediate_size)
-            return adapter_self_attention, adapter_feed_forward
-        # elif adapter_mode == 'hyper':
-        #     #TODO
+        if self.adapter_mode == 'basic':
+            self.basic_adapter_self_attention =nn.ModuleDict(\
+                {task:BasicAdapter(config, config.hidden_size) for task in config.task_names.split(',')})
+            self.basic_adapter_feed_forward =nn.ModuleDict(\
+                {task:BasicAdapter(config, config.intermediate_size) for task in config.task_names.split(',')})
+        elif self.adapter_mode == 'hyper':
+            self.hyper_adapter_self_attention = config.hyper_adapter_self_attention
+            self.hyper_adapter_feed_forward = config.hyper_adapter_feed_forward
 
     def add_norm(self, input, output, dense_layer, dropout, ln_layer):
         """
@@ -160,9 +155,11 @@ class BertLayer(nn.Module):
         multi_head_output = self.self_attention(hidden_states, attention_mask)
 
         # 1.5 if Adapter mode is enabled, we apply adapter btw attention and add-norm
-        #if (self.config.enable_adapter_mode):
-        if self.adapter_mode is not None:
-            multi_head_output = self.adapter_self_attention[task_name](multi_head_output)
+        # if (self.config.enable_adapter_mode):
+        if self.adapter_mode == 'basic':
+            multi_head_output = self.basic_adapter_self_attention[task_name](multi_head_output)
+        elif self.adapter_mode == 'hyper':
+            multi_head_output = self.hyper_adapter_self_attention(multi_head_output, task_name, self.layer_id, 0)
 
         # 2. An add-norm operation that takes the input and output of the multi-head attention layer.
         add_norm_multi_head_output = self.add_norm(hidden_states, multi_head_output, self.attention_dense,
@@ -173,8 +170,10 @@ class BertLayer(nn.Module):
 
         # 3.5 if Adapter mode is enabled, we apply adapter btw 2 layers of FF and add-norm
         # if (self.config.enable_adapter_mode):
-        if self.adapter_mode is not None:
-            feed_forward_output = self.adapter_feed_forward[task_name](feed_forward_output)
+        if self.adapter_mode == 'basic':
+            multi_head_output = self.basic_adapter_feed_forward[task_name](feed_forward_output)
+        elif self.adapter_mode == 'hyper':
+            multi_head_output = self.hyper_adapter_feed_forward(feed_forward_output, task_name, self.layer_id, 1)
         # 4. An add-norm operation that takes the input and output of the feed forward layer.
         add_norm_ff_output = self.add_norm(add_norm_multi_head_output, feed_forward_output, self.out_dense,
                                            self.out_dropout, self.out_layer_norm)
@@ -209,10 +208,15 @@ class BertModel(BertPreTrainedModel):
         position_ids = torch.arange(
             config.max_position_embeddings).unsqueeze(0)
         self.register_buffer('position_ids', position_ids)
+        if config.adapter_mode == 'hyper':
+            self.config.hyper_adapter_self_attention = HyperAdapter(
+                config, config.hidden_size)
+            self.config.hyper_adapter_feed_forward = HyperAdapter(
+                config, config.intermediate_size)
 
         # BERT encoder.
         self.bert_layers = nn.ModuleList(
-            [BertLayer(config) for _ in range(config.num_hidden_layers)])
+            [BertLayer(self.config, layer_id) for layer_id in range(config.num_hidden_layers)])
 
         # [CLS] token transformations.
         self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)

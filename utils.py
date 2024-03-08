@@ -34,28 +34,6 @@ HUGGINGFACE_CO_PREFIX = "https://huggingface.co/{model_id}/resolve/{revision}/{f
 WEIGHTS_NAME = "pytorch_model.bin"
 CONFIG_NAME = "config.json"
 
-def get_activation(activation_string):
-  if not activation_string:
-    return None
-  
-  act = activation_string.lower()
-  if act == "linear":
-    return None
-  elif act == "relu":
-    return nn.ReLU()
-  elif act == "gelu":
-    return nn.GELU()
-  elif act == "tanh":
-    return nn.Tanh()
-  else:
-    raise ValueError("Unsupported activation: %s" % act)
-
-def init_linear_layer(input_dim, output_dim):
-  """Initialize linear layer"""
-  # TODO set std to linear weights
-  linear = nn.Linear(input_dim, output_dim)
-  return linear
-
 def is_torch_available():
   return True
 

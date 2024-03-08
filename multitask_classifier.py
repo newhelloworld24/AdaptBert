@@ -65,12 +65,16 @@ class MultitaskBERT(nn.Module):
         super(MultitaskBERT, self).__init__()
         self.bert = BertModel.from_pretrained('bert-base-uncased', extra_config=config.__dict__)
         # Pretrain mode does not require updating BERT paramters.
+        print("adapter mode:", config.adapter_mode)
         for name, param in self.bert.named_parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
             elif config.option == 'finetune':
+                # Freeze layers 
                 if config.adapter_mode is not None:
-                    param.requires_grad = True if "adapter" in name else False
+                    param.requires_grad = True if config.adapter_mode in name else False
+                    if param.requires_grad == True:
+                        print("layer name: ", name, "requires_grad: ", param.requires_grad)
                 else:
                     param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
@@ -114,7 +118,7 @@ class MultitaskBERT(nn.Module):
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask, 'sst')
         x = self.sentiment_dropout(bert_pooler_output)
-        x = self.sentiment_linear(bert_pooler_output)
+        x = self.sentiment_linear(x)
         x = self.sentiment_relu(x)
         x = self.sentiment_project(x)
         return x
@@ -202,8 +206,11 @@ def train_multitask(args):
               'data_dir': '.',
               'adapter_mode': args.adapter_mode,
               'task_names': args.task_names,
-              "adapter_reduction_factor": args.adapter_reduction_factor,
-              "adapter_non_linearity": args.adapter_non_linearity,
+              "adapter_hidden_size": args.adapter_hidden_size,
+              "task_embedding_size": args.task_embedding_size,
+              "task_hidden_size": args.task_hidden_size,
+              "task_embedding_input_size": args.task_embedding_input_size,
+              "enable_adapter_layer_norm": args.enable_adapter_layer_norm,
               'option': args.option}
 
     config = SimpleNamespace(**config)
@@ -448,8 +455,12 @@ def get_args():
     # adpter
     parser.add_argument("--adapter_mode", type=str, default=None, choices=('basic','hyper'))
     parser.add_argument("--task_names", type=str, default="sst,para,sts")
-    parser.add_argument("--adapter_reduction_factor", type=int, default=8)
-    parser.add_argument("--adapter_non_linearity", type=str, default="gelu")
+    parser.add_argument("--adapter_hidden_size", type=int, default=8)
+    parser.add_argument("--task_embedding_size", type=int, default=64)
+    parser.add_argument("--task_hidden_size", type=int, default=128)
+    parser.add_argument("--task_embedding_input_size", type=int, default=64*3)
+    parser.add_argument("--enable_adapter_layer_norm", type=bool, default=True)
+    
 
     args = parser.parse_args()
     return args
