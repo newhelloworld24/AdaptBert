@@ -209,7 +209,8 @@ def train_multitask(args):
               "task_hidden_size": args.task_hidden_size,
               "task_embedding_input_size": args.task_embedding_input_size,
               "enable_adapter_layer_norm": args.enable_adapter_layer_norm,
-              'option': args.option}
+              "enable_task_layer_norm": args.enable_task_layer_norm,
+              "option": args.option}
 
     config = SimpleNamespace(**config)
     config.device = device
@@ -454,11 +455,12 @@ def get_args():
     # adpter
     parser.add_argument("--adapter_mode", type=str, default=None, choices=('basic','hyper'))
     parser.add_argument("--task_names", type=str, default="sst,para,sts")
-    parser.add_argument("--adapter_hidden_size", type=int, default=8)
-    parser.add_argument("--task_embedding_size", type=int, default=8) # task embed after hypernet conditional on task+layer+position
-    parser.add_argument("--task_hidden_size", type=int, default=16)
-    parser.add_argument("--task_embedding_input_size", type=int, default=16) # task_embed+layer_embed+pos_embed = 16*3
+    parser.add_argument("--adapter_hidden_size", type=int, default=16)
+    parser.add_argument("--task_embedding_size", type=int, default=16) # task embed after hypernet conditional on task+layer+position
+    parser.add_argument("--task_hidden_size", type=int, default=32)
+    parser.add_argument("--task_embedding_input_size", type=int, default=32) # task_embed+layer_embed+pos_embed = 16*3
     parser.add_argument("--enable_adapter_layer_norm", type=bool, default=True)
+    parser.add_argument("--enable_task_layer_norm", type=bool, default=True)
     
 
     args = parser.parse_args()
