@@ -12,7 +12,7 @@ class TaskEmbeddingHyperNet(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.activation = nn.ReLU()
-        self.linear = nn.Linear(config.task_embedding_input_size, config.task_hidden_size)
+        self.linear = nn.Linear(config.task_embedding_input_size*3, config.task_hidden_size)
         self.project = nn.Linear(config.task_hidden_size, config.task_embedding_size)
 
     def forward(self, task_embedding):
@@ -52,17 +52,19 @@ class AdapterHyperNet(nn.Module):
     def __init__(self, config, input_dim):
         super().__init__()
         self.device = config.device
+        self.task_embedding_input_size = config.task_embedding_input_size
         self.task_embedding_size = config.task_embedding_size
         self.adapter_hidden_size = config.adapter_hidden_size
         self.num_hidden_layers = config.num_hidden_layers
         self.task_names = config.task_names
         self.layer_id_embeddings = nn.Embedding(self.num_hidden_layers,
-                                                self.task_embedding_size)
+                                                self.task_embedding_input_size).to(self.device)
+        self.position_id_embeddings = nn.Embedding(2, self.task_embedding_input_size).to(self.device)
         # Init task to embeddings dictionary
         self.task_to_embeddings = {}
         for task in self.task_names.split(','):
             self.task_to_embeddings[task] = nn.Parameter(\
-                torch.Tensor(torch.randn(self.task_embedding_size))).to(self.device)
+                torch.Tensor(torch.randn(self.task_embedding_input_size))).to(self.device)
         
         # Hypernet
         self.task_embedding_hypernet = config.task_embedding_hypernet
@@ -70,19 +72,21 @@ class AdapterHyperNet(nn.Module):
         self.up_sampler_hypernet = TaskConditionalHyperNet(config, self.adapter_hidden_size, input_dim)
         self.layer_norm_hypernet = LayerNormHyperNet(config, input_dim)
     
-    def get_embedding(self, task_name, layer_id):
+    def get_embedding(self, task_name, layer_id, position_id):
         task_embedding = self.task_to_embeddings[task_name]
-        layer_id_tensor = torch.tensor([layer_id], dtype=torch.long).to(self.device)
+        layer_id_tensor = torch.tensor([layer_id], dtype=torch.long)
         layer_embedding = self.layer_id_embeddings(layer_id_tensor)
-        embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1)],
+        position_id_tensor = torch.tensor([position_id], dtype=torch.long)
+        position_embedding = self.position_id_embeddings(position_id_tensor)
+        embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1), position_embedding.view(1, -1)],
                                axis=0)
         embedding = self.task_embedding_hypernet(embedding.view(-1))
         return embedding
     
-    def forward(self, task_name, layer_id):
+    def forward(self, task_name, layer_id, position_id):
         ### position_id = 0, self attention adapter
         ### position_id = 1, feed forward adapter
-        embeddings = self.get_embedding(task_name, layer_id)
+        embeddings = self.get_embedding(task_name, layer_id, position_id)
 
         down_sampler_weight, down_sampler_bias = self.down_sampler_hypernet(embeddings)
         up_sampler_weight, up_sampler_bias = self.up_sampler_hypernet(embeddings)
@@ -128,8 +132,8 @@ class HyperAdapter(nn.Module):
         self.adapter_hypernet = AdapterHyperNet(config, input_dim)
         self.enable_adapter_layer_norm = config.enable_adapter_layer_norm
 
-    def forward(self, input, task_name, layer_id):
-        hypernet_output = self.adapter_hypernet.forward(task_name, layer_id)
+    def forward(self, input, task_name, layer_id, position_id):
+        hypernet_output = self.adapter_hypernet.forward(task_name, layer_id, position_id)
         x = F.linear(input, weight=hypernet_output.down_sampler_weight,
                         bias=hypernet_output.down_sampler_bias)
         
