@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import collections
 from base_bert import BertPreTrainedModel
 from utils import *
-from adapter import BasicAdapter, HyperAdapter, AdapterHyperNet
+from adapter import BasicAdapter, HyperAdapter, AdapterHyperNet, TaskEmbeddingHyperNet
 
 
 class BertSelfAttention(nn.Module):
@@ -208,7 +208,10 @@ class BertModel(BertPreTrainedModel):
         position_ids = torch.arange(
             config.max_position_embeddings).unsqueeze(0)
         self.register_buffer('position_ids', position_ids)
+
+        # Register hyper adapter
         if config.adapter_mode == 'hyper':
+            self.config.task_embedding_hypernet = TaskEmbeddingHyperNet(config)
             self.config.hyper_adapter_self_attention = HyperAdapter(
                 config, config.hidden_size)
             self.config.hyper_adapter_feed_forward = HyperAdapter(

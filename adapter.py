@@ -65,7 +65,7 @@ class AdapterHyperNet(nn.Module):
                 torch.Tensor(torch.randn(self.task_embedding_size))).to(self.device)
         
         # Hypernet
-        self.task_embedding_hypernet = TaskEmbeddingHyperNet(config)
+        self.task_embedding_hypernet = config.task_embedding_hypernet
         self.down_sampler_hypernet = TaskConditionalHyperNet(config, input_dim, self.adapter_hidden_size)
         self.up_sampler_hypernet = TaskConditionalHyperNet(config, self.adapter_hidden_size, input_dim)
         self.layer_norm_hypernet = LayerNormHyperNet(config, input_dim)

@@ -79,24 +79,18 @@ class MultitaskBERT(nn.Module):
                     param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        
+        self.print_param_size()
         # Initialize for sentiment classification
-        self.sentiment_linear = nn.Linear(config.hidden_size, config.hidden_size)
-        self.sentiment_relu = nn.ReLU()
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
         self.sentiment_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         
         # Initialize for paraphrase detection
-        self.paraphrase_linear = nn.Linear(config.hidden_size, config.hidden_size)
-        self.paraphrase_relu = nn.ReLU()
         self.paraphrase_project = nn.Linear(config.hidden_size, 1)
         self.paraphrase_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
         # Initialize for semantic textual similarity
         self.similarity_project = nn.Linear(config.hidden_size, 1)
         self.similarity_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
-        
-
 
     def forward(self, input_ids, attention_mask, task_name):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -118,8 +112,6 @@ class MultitaskBERT(nn.Module):
         ### TODO
         bert_pooler_output = self.forward(input_ids, attention_mask, 'sst')
         x = self.sentiment_dropout(bert_pooler_output)
-        x = self.sentiment_linear(x)
-        x = self.sentiment_relu(x)
         x = self.sentiment_project(x)
         return x
 
@@ -134,8 +126,6 @@ class MultitaskBERT(nn.Module):
         bert_pooler_output = self.forward(torch.cat((input_ids_1, input_ids_2), dim=1), \
                                             torch.cat((attention_mask_1, attention_mask_2), dim=1), 'para')
         x = self.paraphrase_dropout(bert_pooler_output)
-        x = self.paraphrase_linear(x)
-        x = self.paraphrase_relu(x)
         x = self.paraphrase_project(x)
         return x
 
@@ -151,7 +141,15 @@ class MultitaskBERT(nn.Module):
         bert_pooler_output = self.similarity_dropout(bert_pooler_output)
         x = self.similarity_project(bert_pooler_output)
         return x
-
+    
+    
+    def print_param_size(self):
+        total_params = sum(param.numel() for param in self.parameters())
+        updatable_params = sum(param.numel() for param in self.parameters() if param.requires_grad)
+        print(f"Total parameters: {total_params}, "
+              f"updatable parameters: {updatable_params}, "
+              f"update %: {updatable_params/total_params*100:.2f}%")
+    
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
@@ -219,7 +217,7 @@ def train_multitask(args):
     model = MultitaskBERT(config)
     model = model.to(device)
 
-    print("model parameter: ", count_parameters(model))
+    # print("model parameter: ", count_parameters(model))
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -473,3 +471,5 @@ if __name__ == "__main__":
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
+
+
