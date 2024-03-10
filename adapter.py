@@ -74,9 +74,9 @@ class AdapterHyperNet(nn.Module):
     
     def get_embedding(self, task_name, layer_id, position_id):
         task_embedding = self.task_to_embeddings[task_name]
-        layer_id_tensor = torch.tensor([layer_id], dtype=torch.long)
+        layer_id_tensor = torch.tensor([layer_id], dtype=torch.long, device=self.device)
         layer_embedding = self.layer_id_embeddings(layer_id_tensor)
-        position_id_tensor = torch.tensor([position_id], dtype=torch.long)
+        position_id_tensor = torch.tensor([position_id], dtype=torch.long, device=self.device)
         position_embedding = self.position_id_embeddings(position_id_tensor)
         embedding = torch.cat([task_embedding.view(1, -1), layer_embedding.view(1, -1), position_embedding.view(1, -1)],
                                axis=0)
