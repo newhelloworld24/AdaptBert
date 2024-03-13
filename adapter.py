@@ -14,7 +14,7 @@ class TaskEmbeddingHyperNet(nn.Module):
         self.activation = nn.ReLU()
         self.linear = nn.Linear(config.task_embedding_input_size*3, config.task_hidden_size)
         self.project = nn.Linear(config.task_hidden_size, config.task_embedding_size)
-        self.layer_norm = nn.LayerNorm(config.task_embedding_size, eps=1e-6)
+        self.layer_norm = nn.LayerNorm(config.task_embedding_size, eps=config.layer_norm_eps)
         self.enable_task_layer_norm = config.enable_task_layer_norm
 
     def forward(self, task_embedding):

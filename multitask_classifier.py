@@ -79,7 +79,6 @@ class MultitaskBERT(nn.Module):
                     param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        self.print_param_size()
         # Initialize for sentiment classification
         self.sentiment_project = nn.Linear(config.hidden_size, config.num_labels)
         self.sentiment_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
@@ -91,6 +90,7 @@ class MultitaskBERT(nn.Module):
         # Initialize for semantic textual similarity
         self.similarity_project = nn.Linear(config.hidden_size, 1)
         self.similarity_dropout = torch.nn.Dropout(config.hidden_dropout_prob)
+
 
     def forward(self, input_ids, attention_mask, task_name):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -224,6 +224,7 @@ def train_multitask(args):
     optimizer = AdamW(model.parameters(), lr=lr)
     best_dev_acc = 0
 
+    model.print_param_size()
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
@@ -326,6 +327,9 @@ def train_multitask(args):
         if dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr > best_dev_acc:
             best_dev_acc = dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr
             save_model(model, optimizer, args, config, args.filepath)
+            model.print_param_size()
+            print("best_dev_acc:", best_dev_acc)
+
         print(f"Epoch {epoch}: train_sentiment_accuracy :: {train_sentiment_accuracy :.3f}, train_paraphrase_accuracy :: {train_paraphrase_accuracy :.3f}, train_sts_corr :: {train_sts_corr :.3f}")
         print(f"Epoch {epoch}: dev_sentiment_accuracy :: {dev_sentiment_accuracy :.3f}, dev_paraphrase_accuracy :: {dev_paraphrase_accuracy :.3f}, dev_sts_corr :: {dev_sts_corr :.3f}")
         print("model parameter: ", count_parameters(model))
@@ -340,6 +344,7 @@ def test_multitask(args):
         model = MultitaskBERT(config)
         model.load_state_dict(saved['model'])
         model = model.to(device)
+        model.print_param_size()
         print(f"Loaded model to test from {args.filepath}")
 
         sst_test_data, num_labels,para_test_data, sts_test_data = \
@@ -417,7 +422,6 @@ def test_multitask(args):
             for p, s in zip(test_sts_sent_ids, test_sts_y_pred):
                 f.write(f"{p} , {s} \n")
 
-
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sst_train", type=str, default="data/ids-sst-train.csv")
@@ -455,13 +459,12 @@ def get_args():
     # adpter
     parser.add_argument("--adapter_mode", type=str, default=None, choices=('basic','hyper'))
     parser.add_argument("--task_names", type=str, default="sst,para,sts")
-    parser.add_argument("--adapter_hidden_size", type=int, default=16)
-    parser.add_argument("--task_embedding_size", type=int, default=16) # task embed after hypernet conditional on task+layer+position
-    parser.add_argument("--task_hidden_size", type=int, default=32)
-    parser.add_argument("--task_embedding_input_size", type=int, default=32) # task_embed+layer_embed+pos_embed = 16*3
+    parser.add_argument("--adapter_hidden_size", type=int, default=128)
+    parser.add_argument("--task_embedding_size", type=int, default=64) # task embed after hypernet conditional on task+layer+position
+    parser.add_argument("--task_hidden_size", type=int, default=128)
+    parser.add_argument("--task_embedding_input_size", type=int, default=512) # task_embed+layer_embed+pos_embed = X*3
     parser.add_argument("--enable_adapter_layer_norm", type=bool, default=True)
     parser.add_argument("--enable_task_layer_norm", type=bool, default=True)
-    
 
     args = parser.parse_args()
     return args
@@ -469,7 +472,7 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+    args.filepath = f'{args.option}-{args.adapter_mode}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
